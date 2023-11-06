@@ -1,0 +1,349 @@
+---
+title: "Stat 3348 HW 4"
+author: "Turner"
+date: "2023-09-28"
+output: word_document
+---
+
+# Predicting MSRP Price using the AutoMSRP_Reduced Data Set
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Assignment
+
+This HW assignment is all about getting started on your project.  A project takes time and understanding your data set well is an important step.  Your HW assignment is to perform the following tasks.
+
+1. Read in your data set and use the `str` command to get a look at your variable types.  Make any adjustments that need to be made based on your understanding of the variables.
+```{r}
+setwd("C:/Users/valde/OneDrive/Documents/STAT 4350")
+AutoMSRP = read.csv("AutoMSRP_Reduced.csv", header = TRUE, stringsAsFactors = TRUE)
+View(AutoMSRP)
+str(AutoMSRP)
+table(AutoMSRP$Driven_Wheels)
+AutoMSRP$Driven_Wheels = as.integer(AutoMSRP$Driven_Wheels)
+str(AutoMSRP)
+# View(AutoMSRP)
+```
+
+2. Produce summary statistics for each variable.
+```{r}
+summary(AutoMSRP)
+library(caret)   #for prediction models and k-fold CV
+library(naniar)  #for graphing missing data behavior
+library(RANN)
+vis_miss(AutoMSRP)
+
+# Cleaning the data, but using 2nd Approach
+dim(AutoMSRP)
+impute.median.info<-preProcess(AutoMSRP[,-1],method="medianImpute")
+AutoMSRP.clean<-predict(impute.median.info,newdata=AutoMSRP)
+dim(AutoMSRP.clean)
+vis_miss(AutoMSRP.clean)
+
+        #Sanity check to verify
+summary(AutoMSRP.clean)
+head(AutoMSRP)
+head(AutoMSRP.clean)
+```
+ + **When looking at summary statistics, what should we do about NA's or what exactly do those mean? - Clean up the data**
+```{r}
+
+```
+
+3. Start performing EDA using the tools in class.  `ggpairs`, `ggplot`, `correlation heatmap`, etc. 
+```{r}
+names(AutoMSRP.clean)
+AutoMSRP.clean$loghmpg = log(AutoMSRP$highway.MPG)
+AutoMSRP.clean$logcmpg = log(AutoMSRP$city.mpg)
+AutoMSRP.clean$year.cat = ifelse(AutoMSRP$Year > 2000, 'Above 2000', 'Below 2000')
+AutoMSRP.clean$logMSRP = log(AutoMSRP$MSRP)
+names(AutoMSRP.clean)
+AutoMSRP.new = AutoMSRP.clean[, c(3, 4, 5, 6, 7, 8, 9, 11, 15, 16, 17, 18) ]
+names(AutoMSRP.new)
+# fewer factors when it comes to Market.Category
+# ggpairs(AutoMSRP.new, progress = FALSE)
+
+AutoMSRP.new.2000 = AutoMSRP.new[ AutoMSRP.new$year.cat == "Above 2000", ]
+View(AutoMSRP.new.2000)
+mymodel<-lm(logMSRP~poly(loghmpg,2),data=AutoMSRP.new.2000)
+mymodel2<-lm(logMSRP~poly(loghmpg,2),data=AutoMSRP.new)
+
+par(mfrow = c(2,2))
+plot(mymodel)
+plot(mymodel2)
+par(mfrow = c(1,1))
+
+table(AutoMSRP.new$Market.Category)
+table(AutoMSRP.new$Vehicle.Style)
+table(AutoMSRP.new$Make)
+
+ggpairs(AutoMSRP.new, mapping=ggplot2::aes(colour = year.cat), progress = FALSE, lower = list(combo = wrap("facethist", binwidth = 0.5), continuous = wrap("points", alpha = 0.5, size=0.5)))
+
+myplots<-ggpairs(AutoMSRP.new,mapping=ggplot2::aes(colour = year.cat),progress = FALSE, legend = 3)
+
+MSRP.plots<-lapply(1:ncol(AutoMSRP.new), function(j) getPlot(myplots, i = 12, j = j))
+ggmatrix(MSRP.plots,nrow=1,ncol=ncol(AutoMSRP.new),xAxisLabels=myplots$xAxisLabels)
+
+
+names(AutoMSRP.new)
+
+```
+```{r}
+#Observations: the data for the following three predictors seems very wide in the summary function
+AutoMSRP.new$Engine.Cylinders = as.factor(AutoMSRP.new$Engine.Cylinders)
+AutoMSRP.new$Driven_Wheels = as.factor(AutoMSRP.new$Driven_Wheels)
+AutoMSRP.new$Number.of.Doors = as.factor(AutoMSRP.new$Driven_Wheels)
+str(AutoMSRP.new)
+#Scatter plots
+ggplot(AutoMSRP.new,aes(x=Year, y = logMSRP, colour = year.cat)) + geom_point(size = 0.3, alpha = 0.3) + geom_smooth()
+ggplot(AutoMSRP.new,aes(x=Engine.HP,y=logMSRP,colour=year.cat))+geom_point(size = 0.3, alpha = 0.3)+geom_smooth()
+ggplot(AutoMSRP.new,aes(x=logcmpg,y=logMSRP,colour=year.cat))+geom_point(size = 0.3, alpha = 0.3)+geom_smooth() #Only need one
+ggplot(AutoMSRP.new,aes(x=loghmpg,y=logMSRP,colour=year.cat))+geom_point(size = 0.3, alpha = 0.3)+geom_smooth() #Only need one
+
+#box plots
+ggplot(AutoMSRP.new, aes(x = Engine.Fuel.Type, y = logMSRP, colour = year.cat)) + geom_boxplot() #Missing data from before 2000
+ggplot(AutoMSRP.new, aes(x = Engine.Cylinders, y =logMSRP, colour = year.cat)) + geom_boxplot() #Missing data from before 2000
+ggplot(AutoMSRP.new, aes(x = Transmission.Type, y =logMSRP, colour = year.cat)) + geom_boxplot() #Missing data from before 2000
+ggplot(AutoMSRP.new, aes(x = Driven_Wheels, y = logMSRP, colour = year.cat)) + geom_boxplot()
+ggplot(AutoMSRP.new, aes(x = Number.of.Doors, y = logMSRP, colour = year.cat)) + geom_boxplot()
+ggplot(AutoMSRP.new, aes(x = Vehicle.Size, y =logMSRP, colour = year.cat)) + geom_boxplot()
+ggplot(AutoMSRP.new, aes(x = year.cat, y =logMSRP, colour = year.cat)) + geom_boxplot()
+```
+```{r}
+# Excluding non-numeric columns and columns 2, 3, 4, 5, 8
+numeric_data <- AutoMSRP.new[, sapply(AutoMSRP.new, is.numeric)]
+correlation_matrix <- cor(numeric_data)
+
+# Plot the correlation heatmap
+heatmap.2(correlation_matrix, density.info = "none", trace = "none", col = redgreen(75), scale = "none")
+```
+
+```{r}
+# KNN 
+# KNN
+library(caret)
+set.seed(123)
+# index<-sample(1:11914,9531) #80% of 11914 is 9531.2
+# train<-AutoMSRP.new[index,]
+# test<-AutoMSRP.new[-index,]
+fitControl<-trainControl(method="cv",number=5) #number is the k in k-fold
+set.seed(123)
+names(AutoMSRP.new)
+knn.fit<-train(logMSRP~logcmpg + loghmpg + Number.of.Doors + Driven_Wheels + Engine.Cylinders + Engine.HP + Year,
+               data=AutoMSRP.new,
+               method="knn",
+               trControl=fitControl
+               )
+#Results of the CV run to assess bias variance trade off.
+knn.fit
+plot(knn.fit)
+
+set.seed(123)
+knn.fit<-train(logMSRP~logcmpg + loghmpg + Number.of.Doors + Driven_Wheels + Engine.Cylinders + Engine.HP + Year,
+               data=AutoMSRP.new,
+               method="knn",preProcess = c("center","scale"),
+               trControl=fitControl,
+               tuneGrid=data.frame(k=c(1:10,15,20,25,30))
+)
+# RMSE 0.1845
+knn.fit
+plot(knn.fit)
+```
+
+```{r}
+set.seed(1234)
+# AutoMSRP.new$regMSRP = AutoMSRP$MSRP
+fitControl<-trainControl(method="cv",number=5) #number is the k in k-fold
+knn.fit<-train(logMSRP~logcmpg + loghmpg + Number.of.Doors + Driven_Wheels + Engine.Cylinders + Engine.HP + Year,
+               data=AutoMSRP.new,
+               method="knn",preProcess = c("center","scale"),
+               trControl=fitControl,
+               tuneGrid=data.frame(k=c(1:10,15,20,25,30))
+)
+trainIndex<-createDataPartition(AutoMSRP.new$regMSRP,p=.8,list=F)
+train<-AutoMSRP.new[trainIndex,]
+val<-AutoMSRP.new[-trainIndex,]
+
+knn.pred<-predict(knn.fit,val)
+knn.validate<-postResample(pred=knn.pred,obs=AutoMSRP.new$logMSRP)
+
+#knn.validate
+
+#square root to get RMSE
+
+sqrt(knn.validate)
+```
+
+
+```{r}
+# TREES
+set.seed(1234)
+tree.fit<-train(logMSRP~.,
+                    data=AutoMSRP.new,
+                    method="rpart",minsplit=5,
+                    trControl=fitControl,
+                tuneGrid=data.frame(cp=c(0.07771536  ,0.22847743  ,0.53662135  ))
+)
+
+#Lets look at the CV result
+tree.fit
+
+#If we want the final model tree
+plot(tree.fit$finalModel)
+text(tree.fit$finalModel, digits = 3)
+
+#prettier tree
+library(rattle)
+fancyRpartPlot(tree.fit$finalModel)
+
+# predicted_classes = tree.fit %>% predict(test)
+# mean(predicted_classes == test$regMSRP)
+# rmse = 0.3645598
+sqrt(28824.37)
+```
+```{r}
+
+```
+
+
+```{r}
+library(caret)
+fitControl<-trainControl(method="repeatedcv",number=10,repeats=10) #number is the k in k-fold
+set.seed(1234)
+glmnet.fit<-train(logMSRP~.,
+               data=AutoMSRP.new,
+               method="glmnet",
+               trControl=fitControl   #we can add grid once we see what default tuning parameters are.
+               )
+glmnet.fit
+plot(glmnet.fit)
+
+coef(glmnet.fit$finalModel,0.001901167  )  #must input optimal penalty 
+#Check residuals  (need plotmo package.. see above)
+library(plotmo)
+plotres(glmnet.fit$finalModel,lambda=0.001901167  )
+
+#alpha = 0.55, rmse = 0.1997364
+```
+```{r}
+set.seed(1234)
+lasso.fit<-train(logMSRP~.,
+               data=AutoMSRP.new,
+               method="glmnet",
+               trControl=fitControl,
+               tuneGrid = data.frame(alpha = 1, lambda  = c(0.001901167, 0.019011665  , 0.190116653  ))#we can add grid once we see what default tuning parameters are.
+               )
+lasso.fit
+plot(lasso.fit)
+
+coef(lasso.fit$finalModel, 0.001901167    )
+
+# rmse = 0.1997365  
+```
+
+```{r}
+glmnet.fit<-train(logMSRP~.,
+               data=AutoMSRP.new,
+               method="glmnet",
+               trControl=fitControl   #we can add grid once we see what default tuning parameters are.
+               )
+glmnet.fit
+plot(glmnet.fit)
+
+coef(glmnet.fit$finalModel,0.00190116)  #must input optimal penalty
+```
+
+```{r}
+lm.fit<-train(logMSRP~.,
+               data=AutoMSRP.new,
+               method="lm",
+               trControl=fitControl   #we can add grid once we see what default tuning parameters are.
+               )
+lm.fit
+
+
+summary(lm.fit$finalModel)
+```
+
+
+```{r}
+mlr.model<-lm(logMSRP~year.cat+logcmpg+Engine.HP+Vehicle.Size + Driven_Wheels + Engine.Cylinders,data=AutoMSRP.new)
+summary(mlr.model)
+par(mfrow=c(2, 2))
+plot(mlr.model)
+mlr.testMSE<-mean((val$logMSRP-predict(mlr.model,newdata=val))^2)
+# mlr.testMSE
+sqrt(mlr.testMSE)
+```
+
+```{r}
+mlr.testMSE<-mean((val$logMSRP-predict(mlr.model,newdata=val))^2)
+# mlr.testMSE
+sqrt(mlr.testMSE)
+```
+
+```{r}
+# plot actual v predicted
+predicted_values<-predict(mlr.model)
+par(mfrow=c(2, 2))
+
+plot(AutoMSRP.new$logMSRP, predicted_values, xlab = "Actual Log(MSRP)", ylab = "Predicted Log(MSRP)", main = "Actual vs. Predicted")
+
+
+plot(predicted_values, residuals(mlr.model), xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted")
+
+
+qqnorm(residuals(mlr.model), main = "QQ-Plot")
+
+par(mfrow=c(1, 1))
+summary(mlr.model)
+```
+
+```{r}
+#complicated model
+mlr.model2<-lm(logMSRP~year.cat+logcmpg:Engine.HP,data=AutoMSRP.new)
+summary(mlr.model2)
+par(mfrow=c(2, 2))
+
+plot(mlr.model2)
+
+mlr.testMSE2<-mean((val$logMSRP-predict(mlr.model2,newdata=val))^2)
+sqrt(mlr.testMSE2)
+```
+
+```{r}
+predicted_values2<-predict(mlr.model2)
+par(mfrow=c(2, 2))
+
+plot(AutoMSRP.new$logMSRP, predicted_values2, xlab = "Actual Log(MSRP)", ylab = "Predicted Log(MSRP)", main = "Actual vs. Predicted")
+
+
+plot(predicted_values2, residuals(mlr.model2), xlab = "Fitted Values", ylab = "Residuals", main = "Residuals vs. Fitted")
+
+
+qqnorm(residuals(mlr.model2), main = "QQ-Plot")
+
+par(mfrow=c(1, 1))
+```
+
+
+```{r}
+# performance on test
+testMSE<-mean((test$logMSRP-predict(mlr.model2,newdata=test))^2)
+sqrt(testMSE)
+```
+
+
+
+4. Create a ppt slide deck that contains a rough draft of the introductory material of the project which should include 
+  a. Data description of variable (can be found in the appendix) along with and a clear definition of the goal of your project)
+  b. Summary statistics and notes on anything interesting or concerning
+  c. Few sampled scatter plots of things you found interesting so far while performing EDA
+
+
+The ppt slide deck should be submitted as your deliverable for HW4.  It is due on Monday Oct 9 before class. Part of this weeks HW will include the group members presenting the highlights (informally) of the EDA they have performed so far.  Be prepared to answer questions like "what do you think you should try for your mlr model?".
+
+Note:  You do not need to worry about beautiful slides for this slide deck.  This is not a formal presentation of your work.  Is a work in progress (WIP).  This is just a conversation starter. Its a chance for us to all see what data you are working with and bouncing ideas off of each other.  It also ensures that you've started your project and are not waiting to the last minute to get things moving.
+
